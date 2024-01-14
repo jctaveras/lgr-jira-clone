@@ -1,7 +1,7 @@
 mod db;
 mod model;
-
-use model::*;
+mod ui;
+mod io_utils;
 
 fn main() {
     println!("Hello, world!");

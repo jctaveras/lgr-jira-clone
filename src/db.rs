@@ -7,7 +7,7 @@ use std::{
 
 use crate::model::*;
 
-trait DataBase {
+pub trait DataBase {
     fn read_db(&self) -> Result<DB>;
     fn write_db(&self, database: &DB) -> Result<()>;
 }
@@ -65,7 +65,7 @@ pub mod test_utils {
 }
 
 pub struct JiraDataBase {
-    database: Box<dyn DataBase>,
+    pub database: Box<dyn DataBase>,
 }
 
 impl JiraDataBase {
@@ -83,7 +83,6 @@ impl JiraDataBase {
         &self,
         name: String,
         description: String,
-        status: ItemStatus,
     ) -> Result<ItemId> {
         let mut db = self.database.read_db()?;
         let epic_id = match db.epics.keys().max() {
@@ -95,7 +94,7 @@ impl JiraDataBase {
                 description,
                 id: epic_id,
                 name,
-                status,
+                status: ItemStatus::Open,
             },
             Vec::new(),
         );
@@ -113,7 +112,6 @@ impl JiraDataBase {
         &self,
         name: String,
         description: String,
-        status: ItemStatus,
         epic_id: Option<ItemId>,
     ) -> Result<ItemId> {
         let mut db = self.database.read_db()?;
@@ -125,7 +123,7 @@ impl JiraDataBase {
             description,
             id: story_id,
             name,
-            status,
+            status: ItemStatus::Open,
         });
         let story_id = db
             .stories
@@ -221,8 +219,6 @@ impl JiraDataBase {
 
 #[cfg(test)]
 mod tests {
-    use std::result;
-
     use super::test_utils::MockDB;
     use super::*;
 
@@ -234,7 +230,6 @@ mod tests {
         let result = db.create_epic(
             "First Epic".to_owned(),
             "This is the first test epic".to_owned(),
-            ItemStatus::Open,
         );
 
         assert_eq!(result.is_ok(), true);
@@ -266,7 +261,6 @@ mod tests {
         let result = db.create_story(
             "Failure Story Without Epic".to_owned(),
             "This story won't be created if the Epic ID is not valid nor found".to_owned(),
-            ItemStatus::Canceled,
             Some(ItemId(90000)),
         );
 
@@ -286,13 +280,11 @@ mod tests {
             .create_epic(
                 "First Epic".to_owned(),
                 "This is the first test epic".to_owned(),
-                ItemStatus::Open,
             )
             .unwrap();
         let result = db.create_story(
             "Story With Epic".to_owned(),
             "This story will be part of an Epic".to_owned(),
-            ItemStatus::Open,
             Some(epic_id),
         );
 
@@ -313,7 +305,6 @@ mod tests {
         let result = db.create_story(
             "First Story".to_owned(),
             "This is the first test story".to_owned(),
-            ItemStatus::Open,
             None,
         );
 
@@ -347,7 +338,6 @@ mod tests {
             .create_epic(
                 "First Epic".to_owned(),
                 "This is the first test epic".to_owned(),
-                ItemStatus::Open,
             )
             .unwrap();
         let result = db.delete_epic(epic_id);
@@ -378,7 +368,6 @@ mod tests {
             .create_story(
                 "First Story".to_owned(),
                 "This is the first test story".to_owned(),
-                ItemStatus::Open,
                 None,
             )
             .unwrap();
@@ -396,14 +385,12 @@ mod tests {
             .create_epic(
                 "First Epic".to_owned(),
                 "This is the first test epic".to_owned(),
-                ItemStatus::Open,
             )
             .unwrap();
         let story_id = db
             .create_story(
                 "Story With Epic".to_owned(),
                 "This story will be part of an Epic".to_owned(),
-                ItemStatus::Open,
                 Some(epic_id),
             )
             .unwrap();
@@ -425,7 +412,6 @@ mod tests {
             .create_epic(
                 "First Epic".to_owned(),
                 "This is the first test epic".to_owned(),
-                ItemStatus::Open,
             )
             .unwrap();
         let result = db.update_epic_status(epic_id, ItemStatus::Resolved);
@@ -443,7 +429,7 @@ mod tests {
         let db = JiraDataBase {
             database: Box::new(MockDB::new()),
         };
-        let result = db.update_epic_status(ItemId(0), ItemStatus::Canceled);
+        let result = db.update_epic_status(ItemId(0), ItemStatus::Closed);
 
         assert!(result.is_err());
         assert_eq!(
@@ -461,7 +447,6 @@ mod tests {
             .create_story(
                 "First Story".to_owned(),
                 "This is the first test story".to_owned(),
-                ItemStatus::Open,
                 None,
             )
             .unwrap();
@@ -480,7 +465,7 @@ mod tests {
         let db = JiraDataBase {
             database: Box::new(MockDB::new()),
         };
-        let result = db.update_story_status(ItemId(0), ItemStatus::Canceled);
+        let result = db.update_story_status(ItemId(0), ItemStatus::Closed);
 
         assert!(result.is_err());
         assert_eq!(
