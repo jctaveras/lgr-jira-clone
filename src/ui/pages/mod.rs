@@ -1,7 +1,8 @@
-use std::rc::Rc;
 use anyhow::anyhow;
 use anyhow::Result;
 use itertools::Itertools;
+use std::any::Any;
+use std::rc::Rc;
 
 use crate::db::JiraDataBase;
 use crate::model::Action;
@@ -12,6 +13,7 @@ use page_helpers::*;
 pub trait Page {
     fn draw_page(&self) -> Result<()>;
     fn handle_input(&self, input: &str) -> Result<Option<Action>>;
+    fn as_any(&self) -> &dyn Any;
 }
 
 pub struct HomePage {
@@ -62,6 +64,10 @@ impl Page for HomePage {
             }
         }
     }
+
+    fn as_any(&self) -> &dyn Any {
+        self
+    }
 }
 
 pub struct EpicDetail {
@@ -83,8 +89,8 @@ impl Page for EpicDetail {
         println!(
             "{} | {} | {} | {}",
             get_column_string(&epic.detail.id.0.to_string(), 5),
-            get_column_string(&epic.detail.name, 13),
-            get_column_string(&epic.detail.description, 29),
+            get_column_string(&epic.detail.name, 12),
+            get_column_string(&epic.detail.description, 27),
             get_column_string(&epic.detail.status.to_string(), 14)
         );
 
@@ -105,8 +111,7 @@ impl Page for EpicDetail {
                     get_column_string(&story.detail.name, 32),
                     get_column_string(&story.detail.status.to_string(), 17),
                 )
-            }
-        );
+            });
         println!();
         println!();
 
@@ -126,12 +131,16 @@ impl Page for EpicDetail {
             })),
             "d" => {
                 if db.epics.contains_key(&self.epic_id) {
-                    return Ok(Some(Action::DeleteEpic { epic_id: self.epic_id }));
+                    return Ok(Some(Action::DeleteEpic {
+                        epic_id: self.epic_id,
+                    }));
                 }
 
                 Ok(None)
-            },
-            "c" => Ok(Some(Action::CreateStory { epic_id: self.epic_id })),
+            }
+            "c" => Ok(Some(Action::CreateStory {
+                epic_id: self.epic_id,
+            })),
             input => {
                 if let Ok(story_id) = input.parse::<u32>() {
                     if stories.contains_key(&story_id) {
@@ -145,6 +154,10 @@ impl Page for EpicDetail {
                 Ok(None)
             }
         }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -166,10 +179,10 @@ impl Page for StoryDetail {
         println!("  id  |     name     |         description         |    status    ");
         println!(
             "{} | {} | {} | {}",
-            get_column_string(&story.detail.id.0.to_string(), 6),
-            get_column_string(&story.detail.name, 14),
-            get_column_string(&story.detail.description, 29),
-            get_column_string(&story.detail.status.to_string(), 15),
+            get_column_string(&story.detail.id.0.to_string(), 5),
+            get_column_string(&story.detail.name, 12),
+            get_column_string(&story.detail.description, 27),
+            get_column_string(&story.detail.status.to_string(), 13),
         );
 
         println!();
@@ -181,12 +194,21 @@ impl Page for StoryDetail {
     }
 
     fn handle_input(&self, input: &str) -> Result<Option<Action>> {
-       match input {
-        "p" => Ok(Some(Action::NavigateToPreviousPage)),
-        "u" => Ok(Some(Action::UpdateStoryStatus { story_id: self.story_id })),
-        "d" => Ok(Some(Action::DeleteStory { epic_id: self.epic_id, story_id: self.story_id })),
-        _ => Ok(None)
-       }
+        match input {
+            "p" => Ok(Some(Action::NavigateToPreviousPage)),
+            "u" => Ok(Some(Action::UpdateStoryStatus {
+                story_id: self.story_id,
+            })),
+            "d" => Ok(Some(Action::DeleteStory {
+                epic_id: self.epic_id,
+                story_id: self.story_id,
+            })),
+            _ => Ok(None),
+        }
+    }
+
+    fn as_any(&self) -> &dyn Any {
+        self
     }
 }
 
@@ -223,10 +245,7 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
 
             let page = HomePage { db };
 
@@ -265,12 +284,12 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
 
-            let page = EpicDetail { epic_id: epic_id.0, db };
+            let page = EpicDetail {
+                epic_id: epic_id.0,
+                db,
+            };
             assert_eq!(page.draw_page().is_ok(), true);
         }
 
@@ -279,13 +298,12 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
 
-
-            let page = EpicDetail { epic_id: epic_id.0, db };
+            let page = EpicDetail {
+                epic_id: epic_id.0,
+                db,
+            };
             assert_eq!(page.handle_input("").is_ok(), true);
         }
 
@@ -305,19 +323,15 @@ mod tests {
                 database: Box::new(MockDB::new()),
             });
 
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
             let story_id = db
-                .create_story(
-                    "".to_string(),
-                    "".to_string(),
-                    Some(epic_id)
-                )
+                .create_story("".to_string(), "".to_string(), Some(epic_id))
                 .unwrap();
 
-            let page = EpicDetail { epic_id: epic_id.0, db };
+            let page = EpicDetail {
+                epic_id: epic_id.0,
+                db,
+            };
 
             let p = "p";
             let u = "u";
@@ -372,17 +386,9 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
             let story_id = db
-                .create_story(
-                    "".to_string(),
-                    "".to_string(),
-                    None
-
-                )
+                .create_story("".to_string(), "".to_string(), None)
                 .unwrap();
             let page = StoryDetail {
                 epic_id: epic_id.0,
@@ -397,16 +403,9 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
             let story_id = db
-                .create_story(
-                    "".to_string(),
-                    "".to_string(),
-                    Some(epic_id)
-                )
+                .create_story("".to_string(), "".to_string(), Some(epic_id))
                 .unwrap();
             let page = StoryDetail {
                 epic_id: epic_id.0,
@@ -421,16 +420,9 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
             let _ = db
-                .create_story(
-                    "".to_string(),
-                    "".to_string(),
-                    Some(epic_id)
-                )
+                .create_story("".to_string(), "".to_string(), Some(epic_id))
                 .unwrap();
             let page = StoryDetail {
                 epic_id: epic_id.0,
@@ -445,16 +437,9 @@ mod tests {
             let db = Rc::new(JiraDataBase {
                 database: Box::new(MockDB::new()),
             });
-            let epic_id = db.create_epic(
-                "".to_string(),
-                "".to_string(),
-            ).unwrap();
+            let epic_id = db.create_epic("".to_string(), "".to_string()).unwrap();
             let story_id = db
-                .create_story(
-                    "".to_string(),
-                    "".to_string(),
-                    Some(epic_id)
-                )
+                .create_story("".to_string(), "".to_string(), Some(epic_id))
                 .unwrap();
             let page = StoryDetail {
                 epic_id: epic_id.0,
@@ -476,11 +461,16 @@ mod tests {
             );
             assert_eq!(
                 page.handle_input(u).unwrap(),
-                Some(Action::UpdateStoryStatus { story_id: story_id.0 })
+                Some(Action::UpdateStoryStatus {
+                    story_id: story_id.0
+                })
             );
             assert_eq!(
                 page.handle_input(d).unwrap(),
-                Some(Action::DeleteStory { epic_id: epic_id.0, story_id: story_id.0 })
+                Some(Action::DeleteStory {
+                    epic_id: epic_id.0,
+                    story_id: story_id.0
+                })
             );
             assert_eq!(page.handle_input(some_number).unwrap(), None);
             assert_eq!(page.handle_input(junk_input).unwrap(), None);

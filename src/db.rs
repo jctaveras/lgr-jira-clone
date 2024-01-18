@@ -23,7 +23,7 @@ impl DataBase for JSONFileDatabase {
     }
 
     fn write_db(&self, database: &DB) -> Result<()> {
-        let file = OpenOptions::new().write(true).open(&self.0)?;
+        let file = OpenOptions::new().write(true).truncate(true).open(&self.0)?;
         let mut writer = BufWriter::new(file);
 
         serde_json::to_writer_pretty(&mut writer, database)?;
@@ -79,11 +79,7 @@ impl JiraDataBase {
         Ok(self.database.read_db()?)
     }
 
-    pub fn create_epic(
-        &self,
-        name: String,
-        description: String,
-    ) -> Result<ItemId> {
+    pub fn create_epic(&self, name: String, description: String) -> Result<ItemId> {
         let mut db = self.database.read_db()?;
         let epic_id = match db.epics.keys().max() {
             None => ItemId(0),
@@ -132,7 +128,7 @@ impl JiraDataBase {
             .detail
             .id;
 
-        db.last_item = ItemType::Epic {
+        db.last_item = ItemType::Story {
             id: story_id.clone(),
         };
 
@@ -155,35 +151,57 @@ impl JiraDataBase {
     pub fn delete_epic(&self, id: ItemId) -> Result<()> {
         let mut db = self.database.read_db()?;
 
-        match db.epics.remove(&id.0) {
+        if let ItemType::Epic { id: last_item_id } = db.last_item {
+            if last_item_id.0 == id.0 {
+                db.last_item = ItemType::None;
+            }
+        }
+
+        if let Some(epic) = db.epics.get(&id.0) {
+            for story_id in &epic.stories {
+                self.delete_story(*story_id, None)?;
+            }
+
+            db = self.database.read_db()?;
+        }
+
+        return match db.epics.remove(&id.0) {
             Some(_) => Ok(self.database.write_db(&db)?),
             None => Err(anyhow!("Epic ID: {:?} was not found", id)),
-        }
+        };
     }
 
     pub fn delete_story(&self, story_id: ItemId, epic_id: Option<ItemId>) -> Result<()> {
         let mut db = self.database.read_db()?;
 
-        if let Some(id) = epic_id {
-            let epic = db.epics.get(&id.0);
-
-            match epic {
-                None => return Err(anyhow!("Epic ID: {id:?} was not found")),
-                Some(_) => db.epics.entry(id.0).and_modify(|epic| {
-                    epic.stories.remove(
-                        epic.stories
-                            .iter()
-                            .position(|id| id.0 == story_id.0)
-                            .unwrap(),
-                    );
-                }),
-            };
+        if let ItemType::Story { id: last_item_id } = db.last_item {
+            if last_item_id.0 == story_id.0 {
+                db.last_item = ItemType::None;
+            }
         }
 
-        match db.stories.remove(&story_id.0) {
+        if let Some(id) = epic_id {
+            if !db.epics.contains_key(&id.0) {
+                return Err(anyhow!("Epic ID: {id:?} was not found"));
+            }
+
+            db
+                .epics
+                .entry(id.0)
+                .and_modify(|epic| {
+                    epic.stories.remove(
+                epic.stories
+                        .iter()
+                        .position(|id| id.0 == story_id.0)
+                        .unwrap()
+                    );
+                });
+        }
+
+        return match db.stories.remove(&story_id.0) {
             Some(_) => Ok(self.database.write_db(&db)?),
             None => Err(anyhow!("Story ID: {:?} was not found.", story_id)),
-        }
+        };
     }
 
     pub fn update_epic_status(&self, epic_id: ItemId, status: ItemStatus) -> Result<()> {
